@@ -32,7 +32,7 @@ IRsend g_irSender;                  // IR LED connected on pin 3
 
 char g_ACLevel = 0;                 // 0: off, 1-3: cooling level
 char g_sendCode = 0;
-char g_remoteQty = 1;
+const char g_remoteQty = 6;
 
 IRData * g_codes[5][4];
 
@@ -120,9 +120,9 @@ void level(char l)
 
     switch(l)
     {
-        /*case 3: level3(); break;
+        case 3: level3(); break;
         case 2: level2(); break;
-        case 1: level1(); break;*/
+        case 1: level1(); break;
         default: level0();
     }
 }
@@ -130,7 +130,7 @@ void level(char l)
 
 void level0()
 {
-    uint8_t controls[6][17] = {
+    uint8_t controls[g_remoteQty][17] = {
         {   112,    // number of bits
             // data
             0xC4,0xD3,0x64,0x80,0x00,0x04,0xC0,0xE0,0x1C,0x00,0x00,0x00,0x00,0xEE,
@@ -167,7 +167,7 @@ void level0()
 
 void level1()
 {
-    uint8_t controls[6][17] = {
+    uint8_t controls[g_remoteQty][17] = {
         {   112,
             0xC4,0xD3,0x64,0x80,0x00,0x24,0xC0,0xE0,0x1C,0x00,0x00,0x00,0x00,0xDE,
             2, 0
@@ -203,7 +203,7 @@ void level1()
 
 void level2()
 {
-    uint8_t controls[6][17] = {
+    uint8_t controls[g_remoteQty][17] = {
         {   112,
             0xC4,0xD3,0x64,0x80,0x00,0x24,0xC0,0x10,0x1C,0x00,0x00,0x00,0x00,0x3E,
             2, 0
@@ -239,7 +239,7 @@ void level2()
 
 void level3()
 {
-    uint8_t controls[6][17] = {
+    uint8_t controls[g_remoteQty][17] = {
         {   112,
             0xC4,0xD3,0x64,0x80,0x00,0x24,0xC0,0x90,0x1C,0x00,0x00,0x00,0x00,0xBE,
             2, 0
@@ -278,7 +278,7 @@ void sendLevel(uint8_t data[][17])
     IRData irData;
     char control, i;
 
-    for(control = 0; control < 6; control++)
+    for(control = 0; control < g_remoteQty; control++)
     {
         irData.nBits = data[control][0];
         for(i = 0; i < irData.Length(); i++)
