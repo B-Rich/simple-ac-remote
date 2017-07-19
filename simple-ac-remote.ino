@@ -36,9 +36,14 @@ char g_remoteQty = 1;
 
 IRData * g_codes[5][4];
 
-void program();
-void load();
 void dumper();
+
+void level(char l);
+void level0();
+void level1();
+void level2();
+void level3();
+void sendLevel(uint8_t data[][17]);
 
 void setup()
 {
@@ -62,21 +67,6 @@ void setup()
         delay(100);
         dumper();
     }
-
-    // Erase programming if off button is held on startup
-    if(digitalRead(g_pins.buttonOff) == LOW)
-    {
-        digitalWrite(g_pins.ledBlink, HIGH);
-        EEPROM.write(0, 0);
-        delay(100);
-        while(digitalRead(g_pins.buttonOff) == LOW) delay(10);
-        digitalWrite(g_pins.ledBlink, LOW);
-        delay(100);
-    }
-
-    if(EEPROM.read(0) != 'p') program();
-
-    load();
 }
 
 void loop()
@@ -107,493 +97,209 @@ void loop()
         digitalWrite(g_pins.led2, LOW);
         digitalWrite(g_pins.led3, LOW);
 
-        switch(g_ACLevel)
-        {
-            case 3:
-                digitalWrite(g_pins.led3, HIGH);
-            case 2:
-                digitalWrite(g_pins.led2, HIGH);
-            case 1:
-                digitalWrite(g_pins.led1, HIGH);
-                break;
-        }
-
-        for(char remote = 0; remote < g_remoteQty; ++remote)
-        {
-            digitalWrite(g_pins.ledBlink, HIGH);
-            sendIR(g_irSender, (*g_codes[remote][g_ACLevel]));
-            delay(100);
-            digitalWrite(g_pins.ledBlink, LOW);
-            delay(50);
-        }
+        level(g_ACLevel);
 
         delay(400);
         g_sendCode = 0;
     }
 }
 
-bool readLine(String &ret)
+
+void level(char l)
 {
-    if(Serial.available())
+    switch(l)
     {
-        ret = Serial.readStringUntil('\n');
-        ret.replace("\r", "");
-        ret.trim();
-
-        Serial.println(ret);
-
-        return true;
+        case 3:
+            digitalWrite(g_pins.led3, HIGH);
+        case 2:
+            digitalWrite(g_pins.led2, HIGH);
+        case 1:
+            digitalWrite(g_pins.led1, HIGH);
+            break;
     }
 
-    return false;
+    switch(l)
+    {
+        /*case 3: level3(); break;
+        case 2: level2(); break;
+        case 1: level1(); break;*/
+        default: level0();
+    }
 }
 
-uint8_t readInt(bool acceptZero)
+
+void level0()
 {
-    uint8_t val = 0;
-    String inputStr;
-
-    while(1)
-    {
-        while(!readLine(inputStr)) delay(1);
-        val = inputStr.toInt();
-        if(acceptZero || val > 0) break;
-        else Serial.println("invalid input");
-    }
-
-    return val;
-}
-
-bool readHex(uint8_t *dest, uint8_t capacity)
-{
-    String str;
-    uint8_t val = 0, i = 0, nBytes = 0;
-    char ch = 0;
-    bool error = true;
-
-    do
-    {
-        while(!readLine(str)) delay(1);
-        error = str.length() == 0 || str.length() % 2 != 0;
-        if(error) Serial.println("invalid input");
-    } while(error);
-
-    if(str.length() / 2 != capacity)
-    {
-        Serial.println("capacity mismatch");
-        return false;
-    }
-
-    for(i = 0; i < capacity; i++)
-    {
-        val = 0;
-        ch = str.charAt(i*2);
-        if(ch >= '0' && ch <= '9') val += ch - '0';
-        else if(ch >= 'a' && ch <= 'f') val += ch - 'a' + 10;
-        else if(ch >= 'A' && ch <= 'F') val += ch - 'A' + 10;
-        else { Serial.println("invalid char") ; return false; }
-
-        val *= 16;
-
-        ch = str.charAt(i*2+1);
-        if(ch >= '0' && ch <= '9') val += ch - '0';
-        else if(ch >= 'a' && ch <= 'f') val += ch - 'a' + 10;
-        else if(ch >= 'A' && ch <= 'F') val += ch - 'A' + 10;
-        else { Serial.println("invalid char") ; return false; }
-
-        dest[i] = val;
-    }
-
-    return true;
-}
-
-bool stringToHex(String str, uint8_t *dest, uint8_t capacity)
-{
-    uint8_t val = 0, i = 0;
-    char ch = 0;
-
-    if( (str.length() % 2 != 0) || (str.length() / 2 != capacity) )
-    {
-        Serial.println("capacity mismatch");
-        return false;
-    }
-
-    for(i = 0; i < capacity; i++)
-    {
-        val = 0;
-        ch = str.charAt(i*2);
-        if(ch >= '0' && ch <= '9') val += ch - '0';
-        else if(ch >= 'a' && ch <= 'f') val += ch - 'a' + 10;
-        else if(ch >= 'A' && ch <= 'F') val += ch - 'A' + 10;
-        else { Serial.println("invalid char") ; return false; }
-
-        val *= 16;
-
-        ch = str.charAt(i*2+1);
-        if(ch >= '0' && ch <= '9') val += ch - '0';
-        else if(ch >= 'a' && ch <= 'f') val += ch - 'a' + 10;
-        else if(ch >= 'A' && ch <= 'F') val += ch - 'A' + 10;
-        else { Serial.println("invalid char") ; return false; }
-
-        dest[i] = val;
-    }
-
-    return true;
-}
-
-String nextArg(String &args)
-{
-    String next("");
-    char length = args.length();
-    char init = -1, i;
-
-    if(length == 0) return next;
-
-    // find first occurrence of non-space character
-    for(i = 0; i < length && args[i] == ' '; ++i);
-
-    if(i == length)     // if it's all spaces, there are no args
-    {
-        next = "";
-        args = "";
-        return next;
-    }
-
-    init = i;
-
-    // find first space after first argument
-    for(++i; i < length && args[i] != ' '; ++i);
-
-    next = args.substring(init, i);
-
-    if(i != length)     // if there are characters left...
-    {
-        // find start of next argument
-        for( ; i < length && args[i] == ' '; ++i);
-    }
-
-    // if it's all spaces, or if we've reached the end,
-    // there are no arguments left
-    args = (i == length) ? "" : args.substring(i);
-
-    return next;
-}
-
-void program()
-{
-    IRData data;
-    signed char remote, code;
-    bool error = false, success = false;
-    uint8_t answer;
-    uint16_t eepromAddr = 1;
-    String next, args;
-
-    Serial.print("remote qty: ");
-    do
-    {
-        g_remoteQty = readInt(false);
-        error = g_remoteQty > 10;
-        if(error) Serial.println("error");
-    } while(error);
-
-    EEPROM.write(eepromAddr, g_remoteQty);
-    eepromAddr++;
-
-    for(remote = 0; remote < g_remoteQty; remote++)
-    {
-        for(code = 0; code < 4; code++)
+    uint8_t controls[6][17] = {
+        {   112,    // number of bits
+            // data
+            0xC4,0xD3,0x64,0x80,0x00,0x04,0xC0,0xE0,0x1C,0x00,0x00,0x00,0x00,0xEE,
+            2, 0    // protocol id, isRepeated
+        },
+        {   48,
+            0xB2,0x4D,0x7B,0x84,0xE0,0x1F,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            4, 1
+        },
         {
-            Serial.println("\n========================================");
-            Serial.print("remote ");
-            Serial.print(remote);
-            Serial.print(", code ");
-            Serial.println(code);
-
-            while(!Serial.available()) delay(1);
-
-            String args = Serial.readStringUntil('\n');
-            args.replace("\r", "");
-            args.trim();
-            Serial.println(args);
-
-            next = nextArg(args);
-            if(!next.length())
-            {
-                Serial.println("invalid sequence");
-                code -= 1;
-                continue;
-            }
-
-            data.nBits = next.toInt();
-            if(data.nBits == 0)
-            {
-                Serial.println("invalid n bits");
-                code -= 1;
-                continue;
-            }
-
-            next = nextArg(args);
-            if(!next.length())
-            {
-                Serial.println("invalid sequence");
-                code -= 1;
-                continue;
-            }
-
-            success = stringToHex(next, data.data, data.Length());
-            if(!success)
-            {
-                Serial.println("invalid data");
-                code -= 1;
-                continue;
-            }
-
-            next = nextArg(args);
-            if(!next.length())
-            {
-                Serial.println("invalid sequence");
-                code -= 1;
-                continue;
-            }
-
-            data.protocol = g_irProtocols.GetProtocol(next.toInt());
-            error = data.protocol == NULL;
-            if(error)
-            {
-                Serial.println("invalid protocol");
-                code -= 1;
-                continue;
-            }
-
-            next = nextArg(args);
-            if(!next.length())
-            {
-                Serial.println("invalid sequence");
-                code -= 1;
-                continue;
-            }
-
-            data.isRepeated = next.toInt() > 0;
-
-            Serial.print("Result:  ");
-            data.ToString();
-
-            data.isValid = true;
-
-            success = data.WriteToEEPROM(eepromAddr);
-            if(!success)
-            {
-                Serial.println("error while saving to eeprom");
-                return;
-            }
-
-            success = data.ReadFromEEPROM(eepromAddr);
-            if(!success)
-            {
-                Serial.println("error while saving to eeprom");
-                return;
-            }
-            data.ToString();
-
-            Serial.println("saved");
-            eepromAddr += data.SizeOnEEPROM();
+            28,
+            0x88,0xC0,0x05,0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            1, 0
+        },
+        {
+            97,
+            0xFF,0x00,0xFF,0x00,0xFF,0x00,0xDF,0x20,0xEB,0x14,0x54,0xAB,0x00,0x00,
+            3, 0
+        },
+        {
+            35,
+            0x82,0x10,0x00,0x0A,0x40,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            6, 0
+        },
+        {
+            44,
+            0x20,0x49,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            1, 0
         }
-    }
+    };
 
-    EEPROM.write(0, 'p');
+    sendLevel(controls);
 }
 
-
-/**
- * Saves codes on EEPROM memory.
- *
- * First step is to define how many remotes will be stored.
- *
- * Then, for each remote, user must send four commands:
- * turn off, level 1 (hotter), level 2 and level 3 (colder).
- *
- */
-void program2()
+void level1()
 {
-    char currentCode = 0, blinkStatus = 1, received = 0, saveOk = 0;
-    uint16_t eepromAddr = 1;
-    unsigned long blinkTimer = 0;
-    decode_results irRawData;
-
-    Serial.println("\nProgramming routine");
-
-
-    // Set how many remotes
-
-    digitalWrite(g_pins.led1, HIGH);
-
-    do
-    {
-        digitalWrite(g_pins.led2, (g_remoteQty == 2) ? HIGH : LOW);
-        if(digitalRead(g_pins.buttonOff) == LOW)
+    uint8_t controls[6][17] = {
+        {   112,
+            0xC4,0xD3,0x64,0x80,0x00,0x24,0xC0,0xE0,0x1C,0x00,0x00,0x00,0x00,0xDE,
+            2, 0
+        },
+        {   48,
+            0xB2,0x4D,0xBF,0x40,0x40,0xBF,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            4, 1
+        },
         {
-            delay(100);
-            while(digitalRead(g_pins.buttonOff) == LOW) delay(10);
-            delay(100);
-            g_remoteQty = (g_remoteQty == 1) ? 2 : 1;
-        }
-    } while(digitalRead(g_pins.buttonLevel) == HIGH);
-
-    EEPROM.write(eepromAddr++, g_remoteQty);
-
-
-    // Decode and save each remote
-
-    g_irRecv.enableIRIn();
-
-    for(char remote = 0; remote < g_remoteQty; ++remote)
-    {
-        currentCode = 0;
-        IRData data;
-
-        while(currentCode < 4)
+            28,
+            0x88,0x00,0x95,0xE0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            1, 0
+        },
         {
-            if(g_irRecv.decode(&irRawData)) received = 1;
-
-            // display code being programmed
-
-            switch(currentCode)
-            {
-                case 0:
-                    digitalWrite(g_pins.led1, blinkStatus ? LOW : HIGH);
-                    digitalWrite(g_pins.led2, blinkStatus ? HIGH : LOW);
-                    digitalWrite(g_pins.led3, blinkStatus ? LOW : HIGH);
-                    break;
-
-                case 3:
-                    digitalWrite(g_pins.led3, blinkStatus);
-                case 2:
-                    digitalWrite(g_pins.led2, blinkStatus);
-                case 1:
-                    digitalWrite(g_pins.led1, blinkStatus);
-                    break;
-            }
-
-            if(!received)
-            {
-                if(++blinkTimer > 500)
-                {
-                    blinkStatus = blinkStatus ? 0 : 1;
-                    blinkTimer = 0;
-                }
-
-                delay(1);
-                continue;   // return to loop beginning
-            }
-
-            // IR data received
-
-            Serial.print("\ncode ");
-            Serial.print(currentCode, DEC);
-            Serial.print(": ");
-
-            decodeIR(&irRawData, data, 1);
-
-            if(data.isValid)    // i.e. known protocol
-            {
-                digitalWrite(g_pins.ledBlink, HIGH);
-                delay(50);
-                digitalWrite(g_pins.ledBlink, LOW);
-                delay(50);
-                digitalWrite(g_pins.ledBlink, HIGH);
-                delay(50);
-                digitalWrite(g_pins.ledBlink, LOW);
-
-                saveOk = data.WriteToEEPROM(eepromAddr);
-
-                if(!saveOk) break;
-
-                eepromAddr += data.SizeOnEEPROM();
-
-                currentCode++;
-            }
-            else
-            {
-                Serial.println("UNKNOWN");
-                dumpRaw(&irRawData, 0);
-
-                digitalWrite(g_pins.ledBlink, HIGH);
-                delay(500);
-                digitalWrite(g_pins.ledBlink, LOW);
-            }
-
-            g_irRecv.resume();      // get another code
-            received = 0;
-            blinkTimer = 0;
-            blinkStatus = 1;
-
-            digitalWrite(g_pins.led1, LOW);
-            digitalWrite(g_pins.led2, LOW);
-            digitalWrite(g_pins.led3, LOW);
+            97,
+            0xFF,0x00,0xFF,0x00,0xFF,0x00,0x9F,0x60,0xEB,0x14,0x54,0xAB,0x00,0x00,
+            3, 0
+        },
+        {
+            35,
+            0x92,0x10,0x00,0x0A,0x40,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            6, 0
+        },
+        {
+            44,
+            0x28,0x49,0x00,0x00,0x00,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            1, 0
         }
+    };
 
-        if(!saveOk) break;
-    }
-
-
-    // blink level leds twice - end of programming
-    for(char i = 0; i <= 4; i++)
-    {
-        digitalWrite(g_pins.led1, i % 2);
-        digitalWrite(g_pins.led2, i % 2);
-        digitalWrite(g_pins.led3, i % 2);
-        delay(100);
-    }
-
-    if(saveOk) EEPROM.write(0, 'p');
-    else Serial.println("eeprom save error");
+    sendLevel(controls);
 }
 
-
-/**
- * Load programmed codes from EEPROM.
- *
- * byte on EEPROM[1] is the number of remotes programmed
- *
- * @see IRData::ReadFromEEPROM
- */
-void load()
+void level2()
 {
-    IRData data;
-    uint16_t eepromAddr = 2;
-    g_remoteQty = EEPROM.read(1);
-
-    for(char remote = 0; remote < g_remoteQty; remote++)
-    {
-        for(char code = 0; code < 4; code++)
+    uint8_t controls[6][17] = {
+        {   112,
+            0xC4,0xD3,0x64,0x80,0x00,0x24,0xC0,0x10,0x1C,0x00,0x00,0x00,0x00,0x3E,
+            2, 0
+        },
+        {   48,
+            0xB2,0x4D,0xBF,0x40,0x50,0xAF,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            4, 1
+        },
         {
-            Serial.print("remote ");
-            Serial.print(remote, DEC);
-            Serial.print(", code ");
-            Serial.print(code, DEC);
-            Serial.print(", addr ");
-            Serial.println(eepromAddr, DEC);
-
-            data.ReadFromEEPROM(eepromAddr);
-
-            if(!data.isValid)
-            {
-                Serial.println("eeprom load error");
-                return;
-            }
-
-            //data.ToString();
-
-            g_codes[remote][code] = new IRData();
-            (*g_codes[remote][code]) = data;        // copy data read to global array
-
-            eepromAddr += data.SizeOnEEPROM();
-            Serial.println("===");
+            28,
+            0x88,0x08,0x85,0x50,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            1, 0
+        },
+        {
+            97,
+            0xFF,0x00,0xFF,0x00,0xBF,0x40,0x9F,0x60,0x1B,0xE4,0x54,0xAB,0x00,0x00,
+            3, 0
+        },
+        {
+            35,
+            0x92,0xE0,0x00,0x0A,0x40,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            6, 0
+        },
+        {
+            44,
+            0x28,0x48,0x00,0x00,0x00,0x90,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            1, 0
         }
-    }
+    };
 
-    Serial.println("load done");
+    sendLevel(controls);
 }
+
+void level3()
+{
+    uint8_t controls[6][17] = {
+        {   112,
+            0xC4,0xD3,0x64,0x80,0x00,0x24,0xC0,0x90,0x1C,0x00,0x00,0x00,0x00,0xBE,
+            2, 0
+        },
+        {   48,
+            0xB2,0x4D,0xBF,0x40,0x70,0x8F,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            4, 1
+        },
+        {
+            28,
+            0x88,0x08,0x75,0x40,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            1, 0
+        },
+        {
+            97,
+            0xFF,0x00,0xFF,0x00,0xBF,0x40,0x9F,0x60,0x9B,0x64,0x54,0xAB,0x00,0x00,
+            3, 0
+        },
+        {
+            35,
+            0x92,0x60,0x00,0x0A,0x40,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            6, 0
+        },
+        {
+            44,
+            0x28,0x47,0x00,0x00,0x00,0xA0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            1, 0
+        }
+    };
+
+    sendLevel(controls);
+}
+
+void sendLevel(uint8_t data[][17])
+{
+    IRData irData;
+    char control, i;
+
+    for(control = 0; control < 6; control++)
+    {
+        irData.nBits = data[control][0];
+        for(i = 0; i < irData.Length(); i++)
+        {
+            irData.data[i] = data[control][i+1];
+        }
+        irData.protocol = g_irProtocols.GetProtocol(data[control][15]);
+        irData.isRepeated = data[control][16];
+        irData.isValid = true;
+
+        irData.ToString();
+
+
+        digitalWrite(g_pins.ledBlink, HIGH);
+        sendIR(g_irSender, irData);
+        delay(50);
+        digitalWrite(g_pins.ledBlink, LOW);
+        delay(50);
+    }
+}
+
 
 
 void dumper()
