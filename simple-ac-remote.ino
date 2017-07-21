@@ -21,13 +21,15 @@ const struct
 {
     char buttonLevel;
     char buttonOff;
+    char buttonProjPower;
+    char buttonProjFreeze;
     char led1;
     char led2;
     char led3;
     char ledBlink;
     char irSensor;
 }
-g_pins = {10, 11, 4, 5, 6, 7, 2};
+g_pins = {10, 11, 12, 13, 4, 5, 6, 7, 2};
 
 IRrecv g_irRecv(g_pins.irSensor);
 IRsend g_irSender;                  // IR LED connected on pin 3
@@ -51,6 +53,7 @@ void setup()
     pinMode(g_pins.ledBlink, OUTPUT);
     pinMode(g_pins.buttonOff, INPUT_PULLUP);
     pinMode(g_pins.buttonLevel, INPUT_PULLUP);
+    pinMode(g_pins.buttonProjPower, INPUT_PULLUP);
 
     Serial.begin(115200);
 
@@ -90,8 +93,40 @@ void setup()
     Serial.println("ready");
 }
 
+void sendProjectorPower()
+{
+    IRData irData;
+    char control, i;
+
+    uint8_t data[7] = {32, 0x00, 0x0C, 0x40, 0xBF, 1, 0};
+
+    irData.nBits = data[0];
+    for(i = 0; i < irData.Length(); i++)
+    {
+        irData.data[i] = data[i+1];
+    }
+    irData.protocol = g_irProtocols.GetProtocol(data[5]);
+    irData.isRepeated = data[6];
+    irData.isValid = true;
+
+    irData.ToString();
+
+    digitalWrite(g_pins.ledBlink, HIGH);
+    sendIR(g_irSender, irData);
+    delay(50);
+    digitalWrite(g_pins.ledBlink, LOW);
+    delay(50);
+}
+
 void loop()
 {
+    if(digitalRead(g_pins.buttonProjPower) == LOW)
+    {
+        sendProjectorPower();
+        delay(100);
+        while(digitalRead(g_pins.buttonProjPower) == LOW) delay(1);
+    }
+
     if(digitalRead(g_pins.buttonLevel) == LOW)
     {
         delay(100);
